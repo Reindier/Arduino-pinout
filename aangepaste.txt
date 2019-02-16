@@ -1,0 +1,319 @@
+/*************************************************************
+  Download latest Blynk library here:
+    https://github.com/blynkkk/blynk-library/releases/latest
+
+  Blynk is a platform with iOS and Android apps to control
+  Arduino, Raspberry Pi and the likes over the Internet.
+  You can easily build graphic interfaces for all your
+  projects by simply dragging and dropping widgets.
+
+    Downloads, docs, tutorials: http://www.blynk.cc
+    Sketch generator:           http://examples.blynk.cc
+    Blynk community:            http://community.blynk.cc
+    Follow us:                  http://www.fb.com/blynkapp
+                                http://twitter.com/blynk_app
+
+  Blynk library is licensed under MIT license
+  This example code is in public domain.
+
+ *************************************************************
+  This example runs directly on NodeMCU.
+
+  Note: This requires ESP8266 support package:
+    https://github.com/esp8266/Arduino
+
+  Please be sure to select the right NodeMCU module
+  in the Tools -> Board menu!
+
+  For advanced settings please follow ESP examples :
+   - ESP8266_Standalone_Manual_IP.ino
+   - ESP8266_Standalone_SmartConfig.ino
+   - ESP8266_Standalone_SSL.ino
+
+  Change WiFi ssid, pass, and Blynk auth token to run :)
+  Feel free to apply it to any other example. It's simple!
+ *************************************************************/
+
+/* Comment this out to disable prints and save space */
+/*********
+  Rui Santos
+  Complete project details at http://randomnerdtutorials.com
+*********/
+//reedswitch setup://https://randomnerdtutorials.com/monitor-your-door-using-magnetic-reed-switch-and-arduino///
+
+#define BLYNK_PRINT Serial
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+
+/********************* Blynk Athentication Token *******************/
+// You should get Auth Token in the Blynk App.
+// Go to the Project Settings (nut icon).
+char auth[] = "445333312c114e44a317a5195613086b";
+
+/******************** WiFi credentials ********************/
+// Set password to "" for open networks.
+char ssid[] = "blabla";
+char pass[] = "blabla";
+
+/****************** 4x magnetic Reed switches *******************/
+/******************** Front Door Reed Switch ********************/
+int ledOpen_1 = 22;    // If door is open led on 22 will burn
+int ledClose_1 = 24;   // If door is open led on 24 will burn
+int switchReed_1 = 26; // reed contact to 26 See link for connections
+/******************** Back Door Garden Reed Switch ********************/
+int ledOpen_2 = 28;    // If door is open led on 28 will burn
+int ledClose_2 = 30;   // If door is open led on 30 will burn
+int switchReed_2 = 32; // reed contact to 32 See link for connections
+/******************** Back Door upstairs Reed Switch ********************/
+int ledOpen_3 = 34;    // If door is open led on 34 will burn
+int ledClose_3 = 36;   // If door is open led on 36 will burn
+int switchReed_3 = 38; // reed contact to 38 See link for connections
+/******************** Inside Garade Door Reed Switch ********************/
+int ledOpen_4 = 47;    // If door is open led on 47 will burn
+int ledClose_4 = 49;   // If door is open led on 49 will burn
+int switchReed_4 = 51; // reed contact to 51 See link for connections
+
+
+/********************* 4x relay switch board **********************/
+/******************** Relay controlled with 40 ********************/
+int relay_1 = 40; // relay connected to pin 40
+volatile byte relayState_1 = LOW; //relay state
+/******************** Relay controlled with 42 ********************/
+int relay_2 = 42; // relay connected to pin 42
+volatile byte relayState_2 = LOW; //relay state
+/******************** Relay controlled with 44 ********************/
+int relay_3 = 44; // relay connected to pin 44
+volatile byte relayState_3 = LOW; //relay state
+/******************** Relay controlled with 46 ********************/
+int relay_4 = 46; // relay connected to pin 46
+volatile byte relayState_4 = LOW; //relay state
+
+
+/******************* 4 Pir sensors ********************/
+/******************** Pir HC-SR501 ********************/
+int PIRInterrupt_1 = 48; // PIR Motion Sensor is connected to 48
+/******************** Pir HC-SR501 ********************/
+int PIRInterrupt_2 = 50; // PIR Motion Sensor is connected to 50
+/******************** Pir HC-SR501 ********************/
+int PIRInterrupt_3 = 52; // PIR Motion Sensor is connected to 52
+/******************** Pir HC-SR501 ********************/
+int PIRInterrupt_4 = 53; // PIR Motion Sensor is connected to 53
+
+/********************* Timer for Relay Stay on *******************/
+long lastDebounceTime = 0;
+long debounceDelay = 30000; //30 seconds
+
+void setup()
+{
+  // Pin for relay_1 t/m 4 module set as output
+  pinMode(relay_1, OUTPUT);
+  digitalWrite(relay_1, HIGH);
+  pinMode(relay_2, OUTPUT);
+  digitalWrite(relay_2, HIGH);
+  pinMode(relay_3, OUTPUT);
+  digitalWrite(relay_3, HIGH);
+  pinMode(relay_4, OUTPUT);
+  digitalWrite(relay_4, HIGH);
+ {
+  // Triggers detectMotion function on rising mode to turn the relay on, if the condition is met
+  attachInterrupt(digitalPinToInterrupt(PIRInterrupt_1), detectMotion, RISING);}
+  {
+  attachInterrupt(digitalPinToInterrupt(PIRInterrupt_2), detectMotion, RISING);}
+  {
+  attachInterrupt(digitalPinToInterrupt(PIRInterrupt_3), detectMotion, RISING);}
+  {
+  attachInterrupt(digitalPinToInterrupt(PIRInterrupt_4), detectMotion, RISING);}
+ {
+  // PIR motion sensor 1 t/m 4 set as an input
+  pinMode(PIRInterrupt_1, INPUT);
+  pinMode(PIRInterrupt_2, INPUT);
+  pinMode(PIRInterrupt_3, INPUT);
+  pinMode(PIRInterrupt_4, INPUT);
+
+  
+  // Debug console
+  Serial.begin(9600);
+
+  //Blynk.begin(auth, ssid, pass);
+  // You can also specify server:
+  //Blynk.begin(auth, ssid, pass, "blynk-cloud.com", 80);
+  Blynk.begin(auth, ssid, pass, IPAddress(192, 168, 178, 33), 8080);
+
+  pinMode(ledOpen_1, OUTPUT);
+  pinMode(ledClose_1, OUTPUT);
+  pinMode(switchReed_1, INPUT);
+  pinMode(ledOpen_2, OUTPUT);
+  pinMode(ledClose_2, OUTPUT);
+  pinMode(switchReed_2, INPUT);
+  pinMode(ledOpen_3, OUTPUT);
+  pinMode(ledClose_3, OUTPUT);
+  pinMode(switchReed_3, INPUT);
+  pinMode(ledOpen_4, OUTPUT);
+  pinMode(ledClose_4, OUTPUT);
+  pinMode(switchReed_4, INPUT);
+
+  Serial.begin(9600);
+}
+BLYNK_WRITE(V1)
+  if (ledClose_1 == HIGH)
+  {
+    Blynk.virtualWrite(V1, HIGH);
+  }
+  else
+  {
+    Blynk.virtualWrite(V1, LOW);
+  }
+  BLYNK_WRITE(V2)
+  {
+    if (ledClose_2 == HIGH)
+    {
+      Blynk.virtualWrite(V2, HIGH);
+    }
+    else
+    {
+      Blynk.virtualWrite(V2, LOW);
+    }
+    BLYNK_WRITE(V3)
+    {
+      if (ledClose_3 == HIGH)
+      {
+        Blynk.virtualWrite(V3, HIGH);
+      }
+      else
+      {
+        Blynk.virtualWrite(V3, LOW);
+      }
+    }
+    BLYNK_WRITE(V4)
+    {
+      if (ledClose_4 == HIGH)
+      {
+        Blynk.virtualWrite(V4, HIGH);
+      }
+      else
+      {
+        Blynk.virtualWrite(V4, LOW);
+      }
+    }
+
+    void loop()
+    {
+      {
+        Blynk.run();
+      }
+      if (digitalRead(switchReed_1) == HIGH) {
+        digitalWrite(ledOpen_1, LOW);
+        digitalWrite(ledClose_1, HIGH);
+        Serial.println("Your Front Door is Closed");
+        Blynk.virtualWrite(V1, HIGH);
+      }
+      else {
+        digitalWrite(ledOpen_1, HIGH);
+        digitalWrite(ledClose_1, LOW);
+        Serial.println("Your Front Door is Open");
+        Blynk.virtualWrite(V1, LOW);
+      }
+    }
+    if (digitalRead(switchReed_2) == HIGH) {
+      digitalWrite(ledOpen_2, LOW);
+      digitalWrite(ledClose_2, HIGH);
+      Serial.println("Your Garden Door is Closed");
+      Blynk.virtualWrite(V2, HIGH);
+    }
+    else {
+      digitalWrite(ledOpen_2, HIGH);
+      digitalWrite(ledClose_2, LOW);
+      Serial.println("Your Garden Door is Open");
+      Blynk.virtualWrite(V2, LOW);
+    }
+  }
+  if (digitalRead(switchReed_3) == HIGH) {
+    digitalWrite(ledOpen_3, LOW);
+    digitalWrite(ledClose_3, HIGH);
+    Serial.println("Your Back Door upstairs is Closed");
+    Blynk.virtualWrite(V3, HIGH);
+  }
+  else {
+    digitalWrite(ledOpen_3, HIGH);
+    digitalWrite(ledClose_3, LOW);
+    Serial.println("Your Back Door upstairs is Open");
+    Blynk.virtualWrite(V3, LOW);
+  }
+}
+if (digitalRead(switchReed_4) == HIGH) {
+  digitalWrite(ledOpen_4, LOW);
+  digitalWrite(ledClose_4, HIGH);
+  Serial.println("Your Garage Inside Door is Closed");
+  Blynk.virtualWrite(V4, HIGH);
+}
+else {
+  digitalWrite(ledOpen_4, HIGH);
+  digitalWrite(ledClose_4, LOW);
+  Serial.println("Your Garage Inside Door is Open");
+  Blynk.virtualWrite(V4, LOW);
+}
+// If 30 seconds have passed, the relay_1 is turned off
+if ((millis() - lastDebounceTime) > debounceDelay && relayState_1 == HIGH) {
+  digitalWrite(relay_1, HIGH);
+  relayState_1 = LOW;
+  Serial.println("OFF");
+}
+// If 30 seconds have passed, the relay_3 is turned off
+if ((millis() - lastDebounceTime) > debounceDelay && relayState_2 == HIGH) {
+  digitalWrite(relay_2, HIGH);
+  relayState_2 = LOW;
+  Serial.println("OFF");
+}
+// If 30 seconds have passed, the relay_3 is turned off
+if ((millis() - lastDebounceTime) > debounceDelay && relayState_3 == HIGH) {
+  digitalWrite(relay_3, HIGH);
+  relayState_3 = LOW;
+  Serial.println("OFF");
+}
+// If 30 seconds have passed, the relay_4 is turned off
+if ((millis() - lastDebounceTime) > debounceDelay && relayState_4 == HIGH) {
+  digitalWrite(relay_4, HIGH);
+  relayState_4 = LOW;
+  Serial.println("OFF");
+}
+delay(50);
+}
+
+void detectMotion() {
+  Serial.println("Motion on pir_1");
+  if (relayState_1 == LOW) {
+    digitalWrite(relay_1, LOW);
+  }
+  relayState_1 = HIGH;
+  Serial.println("relay_1 ON");
+  lastDebounceTime = millis();
+}
+}
+Serial.println("Motion on Pir 2");
+if (relayState_2 == LOW) {
+  digitalWrite(relay_2, LOW);
+}
+relayState_2 = HIGH;
+Serial.println("relay_2 ON");
+lastDebounceTime = millis();
+}
+}
+Serial.println("Motion on Pir_3");
+if (relayState_3 == LOW) {
+  digitalWrite(relay_3, LOW);
+}
+relayState_3 = HIGH;
+Serial.println("relay_3 ON");
+lastDebounceTime = millis();
+}
+}
+
+Serial.println("Motion on pir_4");
+if (relayState_4 == LOW) {
+  digitalWrite(relay_4, LOW);
+}
+relayState_4 = HIGH;
+Serial.println("relay_4 ON");
+lastDebounceTime = millis();
+}
+}

@@ -1,0 +1,101 @@
+define BLYNK_PRINT Serial
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+
+/******************** Front Door Reed Switch ********************/
+int ledOpen = D3;    // If door is open led on D3 will burn
+int ledClose = D2;   // If door is open led on D2 will burn
+int switchReed = D0; // reed contact to D0 See link for connections
+//https://randomnerdtutorials.com/monitor-your-door-using-magnetic-reed-switch-and-arduino///
+
+/********************* Blynk Athentication Token *******************/
+// You should get Auth Token in the Blynk App.
+// Go to the Project Settings (nut icon).
+char auth[] = "445b863333314e44a317a5195613086b";
+
+/******************** WiFi credentials ********************/
+// Set password to "" for open networks.
+char ssid[] = "blabla";
+char pass[] = "blabla";
+
+/******************** Relay controlled with D7 ********************/
+int relay = D7; // relay connected to pin D7
+volatile byte relayState = LOW; //relay state
+
+/******************** Pir HC-SR501 ********************/
+int PIRInterrupt = D1; // PIR Motion Sensor is connected to D1
+
+/********************* Timer for Relay Stay on *******************/
+long lastDebounceTime = 0;  
+long debounceDelay = 20000; //20 seconds
+
+void setup() 
+{
+  // Pin for relay module set as output
+  pinMode(relay, OUTPUT);
+  digitalWrite(relay, HIGH);
+  // PIR motion sensor set as an input
+  pinMode(PIRInterrupt, INPUT);
+  // Triggers detectMotion function on rising mode to turn the relay on, if the condition is met
+  attachInterrupt(digitalPinToInterrupt(PIRInterrupt), detectMotion, RISING);
+  // Debug console
+  Serial.begin(9600);
+
+  //Blynk.begin(auth, ssid, pass);
+  // You can also specify server:
+  //Blynk.begin(auth, ssid, pass, "blynk-cloud.com", 80);
+  Blynk.begin(auth, ssid, pass, IPAddress(192, 168, 178, 33), 8080);
+  pinMode(ledOpen, OUTPUT);
+  pinMode(ledClose, OUTPUT);
+  pinMode(switchReed, INPUT);
+  Serial.begin(9600);
+  }
+  BLYNK_WRITE(V2)
+  {
+  if(ledClose==HIGH)
+  {
+  Blynk.virtualWrite(V2, HIGH);
+  }
+  else
+  {
+  Blynk.virtualWrite(V2, LOW);
+  }
+  
+  
+}
+
+void loop() 
+{
+  {
+    Blynk.run();
+  }
+  if (digitalRead(switchReed) == HIGH) {
+    digitalWrite(ledOpen, LOW);
+    digitalWrite(ledClose, HIGH);
+    Serial.println("Your Door is Closed");
+    Blynk.virtualWrite(V2, HIGH);
+  }
+  else {
+    digitalWrite(ledOpen, HIGH);
+    digitalWrite(ledClose, LOW);
+    Serial.println("Your Door is Open");
+    Blynk.virtualWrite(V2, LOW);
+  }
+  // If 20 seconds have passed, the relay is turned off
+  if((millis() - lastDebounceTime) > debounceDelay && relayState == HIGH){
+    digitalWrite(relay, HIGH);
+    relayState = LOW;
+    Serial.println("OFF");
+  }
+  delay(50);
+}
+
+void detectMotion() {
+  Serial.println("Motion");
+  if(relayState == LOW){
+    digitalWrite(relay, LOW);
+  }
+  relayState = HIGH;  
+  Serial.println("ON");
+  lastDebounceTime = millis();
+}
